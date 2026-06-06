@@ -1,6 +1,6 @@
 # E-Commerce Customer Segmentation & RFM Analysis
 
-> Applying RFM analysis to transactional data to drive targeted marketing strategies using Python, SQL, and Power BI.
+> Leveraging transactional data to drive targeted marketing strategies using Python, SQL, and Power BI.
 
 ---
 
@@ -24,9 +24,11 @@ This project applies the **RFM (Recency, Frequency, Monetary)** framework to seg
 
 ## Dataset
 
+> 📦 **Dataset (Raw + Cleaned):** [View on Kaggle](https://www.kaggle.com/datasets/gouthamsikharam/ecommerce-raw-data-and-cleaned-data)
+
 | Attribute | Details |
 |---|---|
-
+| Source | Kaggle |
 | Timeframe | December 2010 – December 2011 |
 | Raw Records | 500,000+ transactional rows |
 | Key Columns | InvoiceNo, CustomerID, InvoiceDate, Quantity, UnitPrice, Country |
@@ -116,10 +118,14 @@ Four interactive dashboard pages were built:
 | Segment | Strategy |
 |---|---|
 | Champions (647) | Reward with loyalty programs, early access, and exclusive offers |
-| Loyal Customers (608) | Upsell and cross-sell premium products to increase average order value |
-| Potential Loyalists (1,024) | Targeted emails and personalized recommendations to convert to loyal buyers |
+| Loyal Customers (608) | Upsell and cross-sell premium products to increase order value |
+| Potential Loyalists (1,024) | Targeted emails and personalized recommendations to convert |
 | At Risk (1,179) | Limited-time promotions and win-back campaigns — act urgently |
 | Lost Customers (881) | Surveys to understand churn reasons; re-engagement offers |
+
+**Expected Impact:**
+- 25% improvement in conversion for the At-Risk segment
+- 10% increase in retention through loyalty programs
 
 ---
 
@@ -129,11 +135,12 @@ Four interactive dashboard pages were built:
 - **MySQL** — Data analysis and aggregations
 - **Power BI** — Interactive dashboards and visualizations
 - **Jupyter Notebook** — Exploratory data analysis and documentation
-```
+
+
 ---
 
-Author
-Goutham Krishna Sikharam
-B.Tech — Artificial Intelligence & Data Science (2026)
-📧 gouthamsikharam2024@gmail.com
+## Author
 
+**Goutham Krishna Sikharam**  
+B.Tech — Artificial Intelligence & Data Science (2026)  
+📧 gouthamsikharam2024@gmail.com  | 📞 +91-6309848005
