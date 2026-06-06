@@ -26,7 +26,7 @@ This project applies the **RFM (Recency, Frequency, Monetary)** framework to seg
 
 | Attribute | Details |
 |---|---|
-| Source | UK E-Commerce Retail Dataset (Kaggle) |
+
 | Timeframe | December 2010 – December 2011 |
 | Raw Records | 500,000+ transactional rows |
 | Key Columns | InvoiceNo, CustomerID, InvoiceDate, Quantity, UnitPrice, Country |
