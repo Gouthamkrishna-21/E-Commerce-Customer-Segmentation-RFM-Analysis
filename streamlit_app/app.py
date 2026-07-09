@@ -25,77 +25,115 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Design system: "The Ledger" — customers graded and stamped by value,
-# like entries in a financial register. Paper tones, ink navy, a brass/gold
-# accent for the most valuable grade, cooling to slate for the least.
+# Design system: bold, high-contrast palette — deep navy grounding a vivid
+# coral/orange accent (echoing the Power BI dashboards this app replaces),
+# with teal and gold used sparingly for the segment gradient. Icons/emoji
+# are used throughout as visual symbols so each screen reads at a glance.
 CUSTOM_CSS = """
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700;9..144,800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <style>
 :root {
-    --paper: #F6F5F0;
-    --paper-raised: #FFFFFE;
-    --ink: #1B2333;
-    --ink-soft: #5B6472;
-    --rule: #DEDACB;
-    --gold: #B8892B;
-    --gold-soft: #EFE3C6;
+    --bg: #FBF7F0;
+    --surface: #FFFFFF;
+    --navy: #14213D;
+    --navy-soft: #1F3A63;
+    --ink: #14213D;
+    --ink-soft: #5C6478;
+    --rule: #ECE3D4;
+    --primary: #FF5A36;
+    --primary-dark: #E14418;
+    --primary-soft: #FFE4D9;
+    --teal: #12A594;
+    --gold: #FFB100;
 }
 html, body, [data-testid="stAppViewContainer"], .main {
-    background-color: var(--paper) !important;
+    background-color: var(--bg) !important;
     color: var(--ink);
 }
 [data-testid="stSidebar"] {
-    background-color: #EFEDE3 !important;
-    border-right: 1px solid var(--rule);
+    background-color: var(--navy) !important;
+    border-right: none;
 }
+[data-testid="stSidebar"] * {color: #F2EFE6 !important;}
+[data-testid="stSidebar"] .stCaption, [data-testid="stSidebar"] p {color: #B9C2D6 !important;}
 .block-container {padding-top: 1.6rem; padding-bottom: 3rem; max-width: 1180px;}
 h1, h2, h3 {
     font-family: 'Fraunces', serif !important;
-    font-weight: 600 !important;
+    font-weight: 700 !important;
     color: var(--ink) !important;
     letter-spacing: -0.01em;
 }
 p, div, span, label, li {font-family: 'Inter', sans-serif;}
 
-/* Eyebrow / ledger header */
-.ledger-eyebrow {
+/* Bold gradient hero, used on landing / upload / dashboard header */
+.hero-box {
+    background: linear-gradient(120deg, var(--navy) 0%, var(--navy-soft) 55%, var(--primary) 145%);
+    border-radius: 18px;
+    padding: 36px 40px;
+    margin-bottom: 26px;
+    box-shadow: 0 10px 30px rgba(20,33,61,0.18);
+}
+.hero-box * {color: #FFFFFF !important;}
+.hero-eyebrow {
     font-family: 'IBM Plex Mono', monospace;
     text-transform: uppercase;
-    letter-spacing: 0.14em;
-    font-size: 0.72rem;
-    color: var(--gold);
+    letter-spacing: 0.16em;
+    font-size: 0.74rem;
+    color: #FFC9B8 !important;
     font-weight: 600;
-    margin-bottom: 6px;
+    margin-bottom: 10px;
 }
-.ledger-hero {
-    border-top: 2px solid var(--ink);
-    border-bottom: 1px solid var(--rule);
-    padding: 18px 0 22px 0;
-    margin-bottom: 22px;
-}
-.ledger-hero h1 {font-size: 2.1rem !important; margin: 0 0 6px 0 !important;}
-.ledger-hero .sub {color: var(--ink-soft); font-size: 0.95rem; max-width: 640px;}
-.ledger-source {
+.hero-box h1 {font-size: 2.3rem !important; margin: 0 0 10px 0 !important; font-family: 'Fraunces', serif !important;}
+.hero-box .sub {font-size: 1.02rem; max-width: 680px; color: #EAEEF6 !important; line-height: 1.55;}
+.hero-source {
     font-family: 'IBM Plex Mono', monospace;
     font-size: 0.78rem;
-    color: var(--ink-soft);
-    background: var(--paper-raised);
-    border: 1px solid var(--rule);
+    background: rgba(255,255,255,0.14);
     display: inline-block;
-    padding: 3px 10px;
-    border-radius: 3px;
-    margin-top: 8px;
+    padding: 4px 12px;
+    border-radius: 20px;
+    margin-top: 14px;
 }
 
-/* Metric cards -> ledger line items */
-[data-testid="stMetric"] {
-    background: var(--paper-raised);
+/* Icon medallions used as visual symbols on landing / steps */
+.icon-badge {
+    width: 56px; height: 56px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 16px;
+    font-size: 1.7rem;
+    margin-bottom: 12px;
+    box-shadow: 0 4px 10px rgba(20,33,61,0.12);
+}
+.badge-coral {background: var(--primary-soft); }
+.badge-navy {background: #E4E9F2;}
+.badge-teal {background: #D8F3EF;}
+.badge-gold {background: #FFEEC2;}
+
+/* Step / info cards */
+.step-card {
+    background: var(--surface);
     border: 1px solid var(--rule);
-    border-top: 3px solid var(--gold);
-    border-radius: 4px;
-    padding: 12px 16px 10px 16px;
-    box-shadow: 0 1px 2px rgba(27,35,51,0.05);
+    border-radius: 14px;
+    padding: 22px 20px;
+    height: 100%;
+    box-shadow: 0 2px 6px rgba(20,33,61,0.04);
+}
+.step-card h4 {margin: 0 0 6px 0 !important; font-family: 'Fraunces', serif !important; color: var(--ink) !important; font-size: 1.05rem;}
+.step-card p {color: var(--ink-soft); font-size: 0.9rem; margin: 0; line-height: 1.5;}
+.step-num {
+    font-family: 'IBM Plex Mono', monospace; font-weight: 700; font-size: 0.72rem;
+    color: var(--primary); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 4px;
+}
+
+/* Metric cards */
+[data-testid="stMetric"] {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-top: 4px solid var(--primary);
+    border-radius: 10px;
+    padding: 14px 16px 12px 16px;
+    box-shadow: 0 2px 6px rgba(20,33,61,0.05);
 }
 [data-testid="stMetricLabel"] {
     font-family: 'IBM Plex Mono', monospace !important;
@@ -109,25 +147,47 @@ p, div, span, label, li {font-family: 'Inter', sans-serif;}
 /* Segment stamps */
 .segment-stamp {
     display:inline-flex; align-items:center; gap:6px;
-    padding: 3px 12px 3px 10px;
-    border: 1.5px solid currentColor;
-    border-radius: 3px;
+    padding: 4px 14px 4px 12px;
+    background: currentColor;
+    border-radius: 20px;
     font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.74rem; font-weight: 600;
+    font-size: 0.74rem; font-weight: 700;
     letter-spacing: 0.05em; text-transform: uppercase;
 }
+.segment-stamp span {color: #FFFFFF;}
 
-.stTabs [data-baseweb="tab-list"] {gap: 2px; border-bottom: 1px solid var(--rule);}
+.stTabs [data-baseweb="tab-list"] {gap: 4px; border-bottom: 2px solid var(--rule);}
 .stTabs [data-baseweb="tab"] {
-    background-color: transparent; border-radius: 3px 3px 0 0; padding: 8px 16px;
-    font-family: 'IBM Plex Mono', monospace; font-size: 0.82rem;
+    background-color: transparent; border-radius: 8px 8px 0 0; padding: 10px 18px;
+    font-family: 'IBM Plex Mono', monospace; font-size: 0.82rem; font-weight: 600;
 }
 .stTabs [aria-selected="true"] {
-    background-color: var(--gold-soft) !important;
-    border-bottom: 2px solid var(--gold) !important;
+    background-color: var(--primary-soft) !important;
+    color: var(--primary-dark) !important;
+    border-bottom: 3px solid var(--primary) !important;
 }
-[data-testid="stDataFrame"] {border: 1px solid var(--rule);}
+[data-testid="stDataFrame"] {border: 1px solid var(--rule); border-radius: 8px;}
 hr {border-color: var(--rule) !important;}
+
+/* Buttons */
+[data-testid="stButton"] button[kind="primary"] {
+    background: var(--primary) !important;
+    border: none !important;
+    font-weight: 700 !important;
+    border-radius: 10px !important;
+    box-shadow: 0 4px 12px rgba(255,90,54,0.28);
+}
+[data-testid="stButton"] button[kind="primary"]:hover {background: var(--primary-dark) !important;}
+[data-testid="stButton"] button[kind="secondary"] {
+    border-radius: 10px !important; font-weight: 600 !important;
+}
+
+/* Upload dropzone — make it big, obvious, on-brand */
+[data-testid="stFileUploaderDropzone"], [data-testid="stFileUploadDropzone"] {
+    background: var(--primary-soft) !important;
+    border: 2px dashed var(--primary) !important;
+    border-radius: 16px !important;
+}
 </style>
 """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
@@ -164,6 +224,7 @@ RECOMMENDATIONS = {
 # SESSION STATE
 # ----------------------------------------------------------------------------
 for key, default in {
+    "screen": "landing",   # "landing" -> "upload" -> "dashboard"
     "analysis_done": False,
     "is_sample": False,
     "rfm_df": None,
@@ -179,6 +240,7 @@ for key, default in {
 def reset_state():
     for key in ["analysis_done", "is_sample", "rfm_df", "clean_df", "clean_stats", "reference_date", "source_name"]:
         st.session_state[key] = False if key in ("analysis_done", "is_sample") else None
+    st.session_state["screen"] = "landing"
 
 
 # ----------------------------------------------------------------------------
@@ -349,150 +411,209 @@ def find_sample_file() -> str:
 
 
 # ----------------------------------------------------------------------------
-# SIDEBAR
+# SIDEBAR — lightweight nav only, no uploader here
 # ----------------------------------------------------------------------------
 with st.sidebar:
     st.markdown(
-        "<div class='ledger-eyebrow'>Customer Ledger</div>"
-        "<h2 style='margin-top:0;'>RFM Studio</h2>",
+        "<div style='font-size:1.8rem; margin-bottom:2px;'>📊</div>"
+        "<h2 style='margin-top:0; color:#FFFFFF !important;'>RFM Studio</h2>",
         unsafe_allow_html=True,
     )
-    st.caption("Upload transactions → clean → grade → decide.")
-
-    uploaded_file = st.file_uploader("Upload transaction CSV", type=["csv"])
-
-    run_clicked = st.button("🚀 Run Analysis", type="primary", use_container_width=True, disabled=uploaded_file is None)
-
+    st.caption("Turn raw sales data into customer insight.")
     st.markdown("---")
-    sample_clicked = st.button("🧪 Try Sample Report", use_container_width=True)
+
+    steps_nav = [
+        ("landing", "① Home"),
+        ("upload", "② Upload & Run"),
+        ("dashboard", "③ Dashboard"),
+    ]
+    for key, label in steps_nav:
+        is_current = st.session_state.screen == key
+        disabled = key == "dashboard" and not st.session_state.analysis_done
+        if st.button(("▶ " if is_current else "") + label, use_container_width=True, disabled=disabled, key=f"nav_{key}"):
+            st.session_state.screen = key
+            st.rerun()
 
     if st.session_state.analysis_done:
         st.markdown("---")
-        if st.button("🔄 Reset / New Dataset", use_container_width=True):
+        st.caption(f"Loaded: {st.session_state.source_name}")
+        if st.button("🔄 Start Over / New Dataset", use_container_width=True):
             reset_state()
             st.rerun()
 
-    st.markdown("---")
-    with st.expander("Required columns"):
-        st.write("Your file needs these columns (any order):")
-        for c in REQUIRED_COLS:
-            st.markdown(f"- `{c}`")
-        st.write("Nice to have (enables extra checks):")
-        for c in OPTIONAL_COLS:
-            st.markdown(f"- `{c}`")
-
 # ----------------------------------------------------------------------------
-# HANDLE ACTIONS
+# SCREEN 1 — LANDING (what it is, why, how to start)
 # ----------------------------------------------------------------------------
-if sample_clicked:
-    sample_df = pd.read_csv(find_sample_file())
-    st.session_state.rfm_df = load_precomputed_rfm(sample_df)
-    st.session_state.clean_df = None
-    st.session_state.clean_stats = None
-    st.session_state.is_sample = True
-    st.session_state.analysis_done = True
-    st.session_state.source_name = "Sample UK Retail Dataset (precomputed)"
-
-if run_clicked and uploaded_file is not None:
-    try:
-        raw_df = read_any_csv(uploaded_file)
-    except Exception as e:
-        st.error(f"Couldn't read the file: {e}")
-        st.stop()
-
-    missing, found_optional = validate_columns(raw_df)
-    if missing:
-        st.error(
-            f"❌ This file is missing required column(s): **{', '.join(missing)}**. "
-            f"RFM analysis needs {', '.join(REQUIRED_COLS)}. Please check your file and try again."
-        )
-        st.dataframe(raw_df.head(10), use_container_width=True)
-        st.stop()
-
-    with st.spinner("Cleaning data and computing RFM scores..."):
-        try:
-            clean_df, stats, rfm, ref_date = run_pipeline(raw_df)
-        except Exception as e:
-            st.error(f"Something went wrong while processing this dataset: {e}")
-            st.stop()
-
-    if len(rfm) == 0:
-        st.error("After cleaning, no valid customer transactions remained. Please check your data.")
-        st.stop()
-
-    st.session_state.clean_df = clean_df
-    st.session_state.clean_stats = stats
-    st.session_state.rfm_df = rfm
-    st.session_state.reference_date = ref_date
-    st.session_state.is_sample = False
-    st.session_state.analysis_done = True
-    st.session_state.source_name = uploaded_file.name
-
-
-# ----------------------------------------------------------------------------
-# LANDING PAGE (no analysis yet)
-# ----------------------------------------------------------------------------
-if not st.session_state.analysis_done:
+if st.session_state.screen == "landing":
     st.markdown(
         """
-        <div class='ledger-hero'>
-            <div class='ledger-eyebrow'>Est. from raw transactions — Register No. 001</div>
-            <h1>The Customer Ledger</h1>
-            <div class='sub'>Every transaction file tells you who your best customers are —
-            it just doesn't say so in plain language. Upload one, and this ledger reads it,
-            cleans it, and grades every customer from <b>Champion</b> down to <b>Lost</b>,
-            with the revenue math to back each grade up.</div>
+        <div class='hero-box'>
+            <div class='hero-eyebrow'>📊 Customer Insight, Simplified</div>
+            <h1>Know your customers, at a glance</h1>
+            <div class='sub'>Upload your sales data and instantly see who your best
+            customers are, who's slipping away, and what to do about each one —
+            powered by automatic RFM (Recency, Frequency, Monetary) analysis.</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("### What your file needs")
+    st.markdown("#### How it works")
+    c1, c2, c3 = st.columns(3)
+    with c1:
         st.markdown(
-            "- `InvoiceNo` — order/invoice identifier\n"
-            "- `CustomerID` — unique customer identifier\n"
-            "- `InvoiceDate` — date of purchase\n"
-            "- `Quantity` — units purchased\n"
-            "- `UnitPrice` — price per unit\n\n"
-            "Optional: `Description`, `StockCode`, `Country` — unlocks extra cleaning "
-            "(non-product codes) and richer breakdowns."
+            "<div class='step-card'>"
+            "<div class='icon-badge badge-coral'>📤</div>"
+            "<div class='step-num'>Step 1</div>"
+            "<h4>Upload your data</h4>"
+            "<p>Add a transaction CSV — invoices, customers, dates, quantities, and prices.</p>"
+            "</div>",
+            unsafe_allow_html=True,
         )
-    with col2:
-        st.markdown("### What happens automatically")
+    with c2:
         st.markdown(
-            "1. **Validate** required columns exist\n"
-            "2. **Clean**: drop duplicates, missing customer IDs, cancelled orders, "
-            "bad quantities/prices, non-product line items\n"
-            "3. **Compute RFM** per customer\n"
-            "4. **Score** R/F/M on a 1–5 scale and assign a segment\n"
-            "5. **Visualize**: KPIs, segment mix, deciles, customer explorer, "
-            "and marketing recommendations"
+            "<div class='step-card'>"
+            "<div class='icon-badge badge-teal'>⚙️</div>"
+            "<div class='step-num'>Step 2</div>"
+            "<h4>We clean & score</h4>"
+            "<p>Duplicates, bad rows, and cancellations are removed, then every customer gets an R/F/M score.</p>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+    with c3:
+        st.markdown(
+            "<div class='step-card'>"
+            "<div class='icon-badge badge-gold'>📈</div>"
+            "<div class='step-num'>Step 3</div>"
+            "<h4>Explore insights</h4>"
+            "<p>KPIs, segments, deciles, a customer explorer, and ready-made marketing recommendations.</p>"
+            "</div>",
+            unsafe_allow_html=True,
         )
 
-    st.info("👈 Upload your CSV in the sidebar and click **Run Analysis** — or click **Try Sample Report** to explore the dashboard with a real 4,340-customer UK retail dataset first.")
+    st.write("")
+    lcol1, lcol2, lcol3 = st.columns([1, 1, 2])
+    with lcol1:
+        if st.button("🚀 Get Started", type="primary", use_container_width=True):
+            st.session_state.screen = "upload"
+            st.rerun()
+    with lcol2:
+        if st.button("🧪 Try a Sample", use_container_width=True):
+            st.session_state.screen = "upload"
+            st.rerun()
     st.stop()
 
+# ----------------------------------------------------------------------------
+# SCREEN 2 — UPLOAD & RUN (dedicated page, big obvious dropzone)
+# ----------------------------------------------------------------------------
+if st.session_state.screen == "upload" and not st.session_state.analysis_done:
+    st.markdown(
+        """
+        <div class='hero-box'>
+            <div class='hero-eyebrow'>Step 2 of 3</div>
+            <h1>📤 Add your data</h1>
+            <div class='sub'>Drop your transaction CSV below, or try the bundled sample
+            dataset to explore the dashboard first.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if st.button("← Back to Home"):
+        st.session_state.screen = "landing"
+        st.rerun()
+
+    st.write("")
+    uploaded_file = st.file_uploader("Upload transaction CSV", type=["csv"], label_visibility="collapsed")
+    run_clicked = st.button("🚀 Run Analysis", type="primary", use_container_width=True, disabled=uploaded_file is None)
+
+    st.markdown("<div style='text-align:center; color:var(--ink-soft); margin: 10px 0;'>— or —</div>", unsafe_allow_html=True)
+    sample_clicked = st.button("🧪 Try Sample Report (4,340-customer UK retail dataset)", use_container_width=True)
+
+    with st.expander("📋 What columns does my file need?"):
+        cola, colb = st.columns(2)
+        with cola:
+            st.write("**Required:**")
+            for c in REQUIRED_COLS:
+                st.markdown(f"- `{c}`")
+        with colb:
+            st.write("**Optional (unlocks extra checks & breakdowns):**")
+            for c in OPTIONAL_COLS:
+                st.markdown(f"- `{c}`")
+
+    if sample_clicked:
+        sample_df = pd.read_csv(find_sample_file())
+        st.session_state.rfm_df = load_precomputed_rfm(sample_df)
+        st.session_state.clean_df = None
+        st.session_state.clean_stats = None
+        st.session_state.is_sample = True
+        st.session_state.analysis_done = True
+        st.session_state.source_name = "Sample UK Retail Dataset (precomputed)"
+        st.session_state.screen = "dashboard"
+        st.rerun()
+
+    if run_clicked and uploaded_file is not None:
+        try:
+            raw_df = read_any_csv(uploaded_file)
+        except Exception as e:
+            st.error(f"Couldn't read the file: {e}")
+            st.stop()
+
+        missing, found_optional = validate_columns(raw_df)
+        if missing:
+            st.error(
+                f"❌ This file is missing required column(s): **{', '.join(missing)}**. "
+                f"RFM analysis needs {', '.join(REQUIRED_COLS)}. Please check your file and try again."
+            )
+            st.dataframe(raw_df.head(10), use_container_width=True)
+            st.stop()
+
+        with st.spinner("Cleaning data and computing RFM scores..."):
+            try:
+                clean_df, stats, rfm, ref_date = run_pipeline(raw_df)
+            except Exception as e:
+                st.error(f"Something went wrong while processing this dataset: {e}")
+                st.stop()
+
+        if len(rfm) == 0:
+            st.error("After cleaning, no valid customer transactions remained. Please check your data.")
+            st.stop()
+
+        st.session_state.clean_df = clean_df
+        st.session_state.clean_stats = stats
+        st.session_state.rfm_df = rfm
+        st.session_state.reference_date = ref_date
+        st.session_state.is_sample = False
+        st.session_state.analysis_done = True
+        st.session_state.source_name = uploaded_file.name
+        st.session_state.screen = "dashboard"
+        st.rerun()
+
+    st.stop()
 
 # ----------------------------------------------------------------------------
-# DASHBOARD (analysis done)
+# SCREEN 3 — DASHBOARD (analysis done)
 # ----------------------------------------------------------------------------
+if not st.session_state.analysis_done:
+    # Safety net: dashboard screen requested but nothing computed yet.
+    st.session_state.screen = "upload"
+    st.rerun()
+
 rfm = st.session_state.rfm_df.copy()
 rfm["Segment"] = pd.Categorical(rfm["Segment"], categories=SEGMENT_ORDER, ordered=True)
 
-source_label = "Sample UK Retail Ledger (precomputed)" if st.session_state.is_sample else st.session_state.source_name
+source_label = "Sample UK Retail Dataset (precomputed)" if st.session_state.is_sample else st.session_state.source_name
 total_customers_hero = len(rfm)
 total_revenue_hero = rfm["Monetary"].sum()
 
 st.markdown(
     f"""
-    <div class='ledger-hero'>
-        <div class='ledger-eyebrow'>Ledger Reading</div>
-        <h1>{total_customers_hero:,} customers, graded</h1>
-        <div class='sub'>Register drawn from <b>{source_label}</b> — £{total_revenue_hero:,.0f} in
+    <div class='hero-box'>
+        <div class='hero-eyebrow'>Step 3 of 3 — Dashboard</div>
+        <h1>📈 {total_customers_hero:,} customers, scored</h1>
+        <div class='sub'>Drawn from <b>{source_label}</b> — £{total_revenue_hero:,.0f} in
         total spend, sorted from Champion to Lost below.</div>
-        <div class='ledger-source'>SOURCE: {source_label}</div>
+        <div class='hero-source'>SOURCE: {source_label}</div>
     </div>
     """,
     unsafe_allow_html=True,
@@ -509,10 +630,10 @@ with tabs[0]:
     else:
         stats = st.session_state.clean_stats
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Rows before cleaning", f"{stats['initial_rows']:,}")
-        c2.metric("Rows after cleaning", f"{stats['final_rows']:,}")
-        c3.metric("Unique customers", f"{stats['unique_customers']:,}")
-        c4.metric("Unique invoices", f"{stats['unique_invoices']:,}")
+        c1.metric("📥 Rows before cleaning", f"{stats['initial_rows']:,}")
+        c2.metric("✅ Rows after cleaning", f"{stats['final_rows']:,}")
+        c3.metric("👥 Unique customers", f"{stats['unique_customers']:,}")
+        c4.metric("🧾 Unique invoices", f"{stats['unique_invoices']:,}")
 
         st.markdown("#### Rows removed, by reason")
         removal_rows = [
@@ -549,11 +670,11 @@ with tabs[1]:
     avg_recency = rfm["Recency"].mean()
 
     c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Total Customers", f"{total_customers:,}")
-    c2.metric("Total Revenue", f"£{total_revenue:,.0f}")
-    c3.metric("Avg Spend / Customer", f"£{avg_monetary:,.0f}")
-    c4.metric("Avg Orders / Customer", f"{avg_frequency:,.1f}")
-    c5.metric("Avg Recency (days)", f"{avg_recency:,.0f}")
+    c1.metric("👥 Total Customers", f"{total_customers:,}")
+    c2.metric("💰 Total Revenue", f"£{total_revenue:,.0f}")
+    c3.metric("🛍️ Avg Spend / Customer", f"£{avg_monetary:,.0f}")
+    c4.metric("🔁 Avg Orders / Customer", f"{avg_frequency:,.1f}")
+    c5.metric("⏱️ Avg Recency (days)", f"{avg_recency:,.0f}")
 
     col1, col2 = st.columns([1, 1])
     with col1:
@@ -703,8 +824,9 @@ with tabs[5]:
         count = int((rfm["Segment"] == seg).sum())
         revenue_share = round(rfm.loc[rfm["Segment"] == seg, "Monetary"].sum() / rfm["Monetary"].sum() * 100, 1) if rfm["Monetary"].sum() else 0
         color = SEGMENT_COLORS[seg]
+        icon = SEGMENT_ICONS.get(seg, "")
         st.markdown(
-            f"<span class='segment-stamp' style='color:{color};'>{seg}</span> "
+            f"<span class='segment-stamp' style='color:{color};'><span>{icon} {seg}</span></span> "
             f"&nbsp; **{count:,} customers** &nbsp;•&nbsp; **{revenue_share}%** of revenue",
             unsafe_allow_html=True,
         )
