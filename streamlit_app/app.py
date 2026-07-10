@@ -122,6 +122,45 @@ REQUIRED_COLS = ["InvoiceNo", "CustomerID", "InvoiceDate", "Quantity", "UnitPric
 OPTIONAL_COLS = ["Description", "Country", "StockCode"]
 NON_PRODUCT_CODES = {"POST", "CARRIAGE", "MANUAL", "BANK CHARGES", "DOT", "AMAZONFEE", "M", "PADS", "CRUK"}
 
+# Different e-commerce exports (Shopify, WooCommerce, Amazon Seller reports,
+# etc.) name the same fields differently. Rather than silently breaking on
+# any file that isn't a byte-for-byte match to the original Kaggle schema,
+# InsightCart auto-suggests a mapping from common aliases and lets the user
+# confirm/adjust it before running the pipeline.
+COLUMN_ALIASES = {
+    "InvoiceNo": ["invoiceno", "invoice no", "invoice_no", "invoice number", "order id", "orderid", "order_no", "order number"],
+    "CustomerID": ["customerid", "customer id", "customer_id", "client id", "clientid", "user id", "userid"],
+    "InvoiceDate": ["invoicedate", "invoice date", "invoice_date", "order date", "orderdate", "order_date", "date", "transaction date", "purchase date"],
+    "Quantity": ["quantity", "qty", "units", "unit count", "order quantity"],
+    "UnitPrice": ["unitprice", "unit price", "unit_price", "price", "item price", "unit cost"],
+    "Description": ["description", "product name", "productname", "product description", "item description", "product"],
+    "Country": ["country", "shipping country", "customer country", "billing country"],
+    "StockCode": ["stockcode", "stock code", "sku", "product code", "productcode", "item code"],
+}
+
+
+def _normalize(name: str) -> str:
+    return "".join(ch for ch in str(name).lower() if ch.isalnum())
+
+
+def auto_map_columns(columns) -> dict:
+    """Best-effort guess of which uploaded column corresponds to each
+    canonical field. Returns {canonical_name: guessed_column_or_None}."""
+    normalized_lookup = {_normalize(c): c for c in columns}
+    guesses = {}
+    for canonical, aliases in COLUMN_ALIASES.items():
+        guess = None
+        # exact case-insensitive match on the canonical name itself first
+        if _normalize(canonical) in normalized_lookup:
+            guess = normalized_lookup[_normalize(canonical)]
+        else:
+            for alias in aliases:
+                if _normalize(alias) in normalized_lookup:
+                    guess = normalized_lookup[_normalize(alias)]
+                    break
+        guesses[canonical] = guess
+    return guesses
+
 SEGMENT_DESCRIPTIONS = {
     "Champions": "These customers generate the highest revenue — they buy most recently, most often, and spend the most.",
     "Loyal Customers": "Regular, dependable buyers who purchase often but haven't reached the top spending tier yet.",
@@ -189,8 +228,8 @@ def render_tech_pills():
 # ----------------------------------------------------------------------------
 # CORE PIPELINE FUNCTIONS
 # ----------------------------------------------------------------------------
-def read_any_csv(uploaded_file) -> pd.DataFrame:
-    raw_bytes = uploaded_file.getvalue()
+@st.cache_data(show_spinner=False)
+def _parse_csv_bytes(raw_bytes: bytes) -> pd.DataFrame:
     # Single-pass read: utf-8 with bad bytes replaced instead of silently
     # substituted characters is far faster than retrying whole encodings in
     # sequence on a large file. Only fall back to other encodings if this
@@ -216,6 +255,14 @@ def read_any_csv(uploaded_file) -> pd.DataFrame:
     if "UnitPrice" in df.columns:
         df["UnitPrice"] = pd.to_numeric(df["UnitPrice"], errors="coerce", downcast="float")
     return df
+
+
+def read_any_csv(uploaded_file) -> pd.DataFrame:
+    # Cached on the raw bytes (cheap to hash) rather than on a DataFrame
+    # (expensive to hash) — this file gets re-parsed on every mapping-UI
+    # interaction, so this cache is what keeps a large upload from being
+    # re-read from scratch on every selectbox click.
+    return _parse_csv_bytes(uploaded_file.getvalue())
 
 
 def validate_columns(df: pd.DataFrame):
@@ -383,9 +430,12 @@ with st.sidebar:
     ]
     for key, label in nav_items:
         is_current = st.session_state.screen == key
-        disabled = key == "dashboard" and not st.session_state.analysis_done
-        if st.button(("▶ " if is_current else "") + label, use_container_width=True, disabled=disabled, key=f"nav_{key}"):
-            st.session_state.screen = key
+        if st.button(("▶ " if is_current else "") + label, use_container_width=True, key=f"nav_{key}"):
+            if key == "dashboard" and not st.session_state.analysis_done:
+                st.session_state.screen = "upload"
+                st.session_state["_needs_data_notice"] = True
+            else:
+                st.session_state.screen = key
             st.rerun()
 
     if st.session_state.analysis_done:
@@ -461,6 +511,57 @@ if st.session_state.screen == "landing":
         )
 
     st.write("")
+    st.markdown("#### What is RFM Analysis?")
+    st.markdown(
+        "<p style='color:var(--ink-soft); max-width:820px; font-size:0.98rem; line-height:1.6;'>"
+        "RFM stands for <b>R</b>ecency, <b>F</b>requency, and <b>M</b>onetary — three simple questions "
+        "answered for every customer using nothing but their order history. No surveys, no guesswork.</p>",
+        unsafe_allow_html=True,
+    )
+
+    r1, r2, r3 = st.columns(3)
+    with r1:
+        st.markdown(
+            "<div class='step-card'>"
+            "<div class='icon-badge badge-navy'>🕒</div>"
+            "<h4>Recency (R)</h4>"
+            "<p>Days since a customer's <b>last purchase</b>. Fewer days = more engaged right now. "
+            "Someone who bought last week is a warmer lead than someone who last bought eight months ago.</p>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+    with r2:
+        st.markdown(
+            "<div class='step-card'>"
+            "<div class='icon-badge badge-teal'>🔁</div>"
+            "<h4>Frequency (F)</h4>"
+            "<p>The number of <b>separate orders</b> a customer has placed. More orders = more habitual, "
+            "loyal purchasing behavior, not just one lucky sale.</p>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+    with r3:
+        st.markdown(
+            "<div class='step-card'>"
+            "<div class='icon-badge badge-gold'>💰</div>"
+            "<h4>Monetary (M)</h4>"
+            "<p>The <b>total amount</b> a customer has spent (quantity × price, summed across every order). "
+            "Higher spend = more revenue at stake if they leave.</p>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
+    st.markdown(
+        "<div class='rec-action' style='margin-top:16px;'>"
+        "<b>How segments get assigned:</b> each of R, F, and M is ranked 1–5 across your whole customer "
+        "base (5 = best), then summed into an Overall Score from 3–15. That score sorts every customer "
+        "into one of five segments — <b>Champions</b> (top scorers), <b>Loyal Customers</b>, "
+        "<b>Potential Loyalists</b>, <b>At Risk</b>, and <b>Lost Customers</b> (lowest scorers)."
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+    st.write("")
     st.markdown("#### Workflow")
     render_workflow()
 
@@ -485,17 +586,57 @@ if st.session_state.screen == "upload":
         st.session_state.screen = "landing"
         st.rerun()
 
+    if st.session_state.pop("_needs_data_notice", False):
+        st.warning("📊 The Dashboard needs a dataset first — upload a file or try the sample below, then it'll open automatically.")
+
     if st.session_state.analysis_done:
         st.info(f"Currently loaded: **{st.session_state.source_name}**. Uploading a new file below will replace it.")
 
     st.write("")
     uploaded_file = st.file_uploader("Upload transaction CSV", type=["csv"], label_visibility="collapsed")
-    run_clicked = st.button("🚀 Run Analysis", type="primary", use_container_width=True, disabled=uploaded_file is None)
+
+    mapping_ok = False
+    mapping = {}
+    if uploaded_file is not None:
+        try:
+            raw_preview = read_any_csv(uploaded_file)
+        except Exception as e:
+            st.error(f"Couldn't read the file: {e}")
+            raw_preview = None
+
+        if raw_preview is not None:
+            guesses = auto_map_columns(raw_preview.columns)
+            unmatched_required = [c for c in REQUIRED_COLS if guesses.get(c) is None]
+            column_options = ["-- Not in file --"] + list(raw_preview.columns)
+
+            with st.expander("🔧 Column Mapping (auto-detected — adjust if your file uses different headers)", expanded=bool(unmatched_required)):
+                if unmatched_required:
+                    st.warning(f"Couldn't auto-match: **{', '.join(unmatched_required)}**. Please select them manually below.")
+                else:
+                    st.caption("All required fields were auto-matched. Double-check them, or adjust for a differently-named export.")
+
+                mcol1, mcol2 = st.columns(2)
+                for i, canonical in enumerate(REQUIRED_COLS + OPTIONAL_COLS):
+                    target_col = mcol1 if i % 2 == 0 else mcol2
+                    default = guesses.get(canonical)
+                    default_idx = column_options.index(default) if default in column_options else 0
+                    tag = "required" if canonical in REQUIRED_COLS else "optional"
+                    mapping[canonical] = target_col.selectbox(f"{canonical} ({tag})", column_options, index=default_idx, key=f"map_{canonical}")
+
+            selected_cols = [v for v in mapping.values() if v != "-- Not in file --"]
+            has_duplicates = len(selected_cols) != len(set(selected_cols))
+            if has_duplicates:
+                st.error("❌ Each column can only be mapped to one field — you've mapped the same source column to two fields.")
+
+            mapping_ok = all(mapping[c] != "-- Not in file --" for c in REQUIRED_COLS) and not has_duplicates
+
+    run_clicked = st.button("🚀 Run Analysis", type="primary", use_container_width=True, disabled=not mapping_ok)
 
     st.markdown("<div style='text-align:center; color:var(--ink-soft); margin: 10px 0;'>— or —</div>", unsafe_allow_html=True)
     sample_clicked = st.button("🧪 Try Sample Report (4,340-customer UK retail dataset)", use_container_width=True)
 
     with st.expander("📋 What columns does my file need?"):
+        st.caption("Different names? No problem — the mapper above auto-detects common aliases (e.g. \"Order ID\" → InvoiceNo, \"Order Date\" → InvoiceDate) and lets you fix anything it misses.")
         cola, colb = st.columns(2)
         with cola:
             st.write("**Required:**")
@@ -524,6 +665,15 @@ if st.session_state.screen == "upload":
         except Exception as e:
             st.error(f"Couldn't read the file: {e}")
             st.stop()
+
+        # Apply the confirmed column mapping. Drop any pre-existing column
+        # that already happens to share a canonical name but wasn't the one
+        # selected for it, so the rename below can't create duplicate columns.
+        rename_map = {v: k for k, v in mapping.items() if v != "-- Not in file --"}
+        for canonical in COLUMN_ALIASES:
+            if canonical in raw_df.columns and mapping.get(canonical) != canonical:
+                raw_df = raw_df.drop(columns=[canonical])
+        raw_df = raw_df.rename(columns=rename_map)
 
         missing, found_optional = validate_columns(raw_df)
         if missing:
@@ -598,6 +748,7 @@ if st.session_state.screen == "about":
 # SCREEN — DASHBOARD (safety checks first)
 # ----------------------------------------------------------------------------
 if not st.session_state.analysis_done:
+    st.session_state["_needs_data_notice"] = True
     st.session_state.screen = "upload"
     st.rerun()
 if st.session_state.screen != "dashboard":
@@ -743,6 +894,15 @@ with tabs[2]:
             .reset_index()
             .sort_values("Month")
         )
+
+        min_date = clean_df["InvoiceDate"].min()
+        max_date = clean_df["InvoiceDate"].max()
+        last_month_end = (max_date.to_period("M").to_timestamp("M"))
+        is_partial_last_month = max_date.normalize() < last_month_end.normalize()
+        range_note = f"Showing every month in this file: **{min_date.strftime('%b %Y')} – {max_date.strftime('%b %Y')}**."
+        if is_partial_last_month:
+            range_note += f" The last month is partial — data stops on **{max_date.strftime('%d %b %Y')}**, not the full month, which is why it dips at the end."
+        st.caption(range_note)
 
         tcol1, tcol2 = st.columns(2)
         with tcol1:
