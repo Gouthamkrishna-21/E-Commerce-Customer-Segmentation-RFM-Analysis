@@ -40,7 +40,7 @@ CUSTOM_CSS = """
 <style>
 :root { --bg: #F4F6FA; --surface: #FFFFFF; --navy: #0F172A; --navy-soft: #1E3A8A; --ink: #0F172A; --ink-soft: #64748B; --rule: #E2E8F0; --primary: #2563EB; --primary-dark: #1D4ED8; --primary-soft: #DBEAFE; }
 html, body, [data-testid="stAppViewContainer"], .main { background-color: var(--bg) !important; color: var(--ink); }
-[data-testid="stSidebar"] { background-color: var(--navy) !important; border-right: none; }
+[data-testid="stSidebar"] { background: linear-gradient(165deg, #0F172A 0%, #16213E 45%, #1E2A5E 100%) !important; border-right: none; }
 [data-testid="stSidebar"] * { color: #E2E8F0 !important; }
 [data-testid="stSidebar"] .stCaption, [data-testid="stSidebar"] p { color: #94A3B8 !important; }
 .block-container { padding-top: 1.6rem; padding-bottom: 2rem; max-width: 1180px; }
@@ -52,10 +52,16 @@ p, div, span, label, li { font-family: 'Inter', sans-serif; }
 .hero-box h1 { font-size: 2.4rem !important; margin: 0 0 10px 0 !important; font-family: 'Fraunces', serif !important; }
 .hero-box .sub { font-size: 1.05rem; max-width: 700px; color: #E2E8F0 !important; line-height: 1.6; }
 .logo-row { display: flex; align-items: center; gap: 10px; margin-bottom: 2px; }
-.logo-icon { font-size: 1.9rem; }
+.logo-icon { font-size: 1.5rem; background: linear-gradient(135deg, #2563EB, #7C3AED); width: 42px; height: 42px; border-radius: 12px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 14px rgba(124,58,237,0.4); }
 .logo-text { font-family: 'Fraunces', serif !important; font-weight: 800 !important; font-size: 1.5rem; color: #FFFFFF !important; }
+.sidebar-divider { height: 3px; border: none; border-radius: 3px; background: linear-gradient(90deg, #2563EB, #7C3AED, #06B6D4, #F59E0B); margin: 18px 0; opacity: 0.9; }
 .sidebar-tagline { font-size: 0.8rem; color: #94A3B8 !important; margin-bottom: 14px; }
-.tech-pill { display: inline-block; background: rgba(255,255,255,0.08); color: #CBD5E1 !important; font-family: 'IBM Plex Mono', monospace; font-size: 0.68rem; padding: 3px 10px; border-radius: 20px; margin: 2px 4px 2px 0; }
+.tech-pill { display: inline-flex; align-items: center; gap: 5px; font-family: 'IBM Plex Mono', monospace; font-size: 0.68rem; font-weight: 600; padding: 4px 11px; border-radius: 20px; margin: 3px 4px 3px 0; border: 1px solid rgba(255,255,255,0.12); }
+.pill-python { background: rgba(55,118,171,0.22); color: #8AB4E8 !important; }
+.pill-pandas { background: rgba(130,84,229,0.22); color: #C4B0F5 !important; }
+.pill-streamlit { background: rgba(255,75,75,0.2); color: #FF9B9B !important; }
+.pill-plotly { background: rgba(6,182,212,0.2); color: #6EE7E7 !important; }
+.pill-rfm { background: rgba(245,158,11,0.2); color: #FBBF24 !important; }
 .sidebar-version { font-family: 'IBM Plex Mono', monospace; font-size: 0.68rem; color: #64748B !important; margin-top: 14px; }
 .kpi-card { background: var(--surface); border: 1px solid var(--rule); border-radius: 14px; padding: 18px 16px; text-align: center; box-shadow: 0 2px 8px rgba(15,23,42,0.05); height: 100%; }
 .kpi-icon { font-size: 1.6rem; margin-bottom: 6px; }
@@ -221,7 +227,14 @@ def render_workflow():
 
 
 def render_tech_pills():
-    pills = "".join(f"<span class='tech-pill'>{t}</span>" for t in ["Python", "Pandas", "Streamlit", "Plotly", "RFM Analysis"])
+    items = [
+        ("pill-python", "🐍", "Python"),
+        ("pill-pandas", "🐼", "Pandas"),
+        ("pill-streamlit", "🔴", "Streamlit"),
+        ("pill-plotly", "📈", "Plotly"),
+        ("pill-rfm", "🎯", "RFM Analysis"),
+    ]
+    pills = "".join(f"<span class='tech-pill {cls}'>{icon} {label}</span>" for cls, icon, label in items)
     st.markdown(pills, unsafe_allow_html=True)
 
 
@@ -420,7 +433,7 @@ def find_sample_file() -> str:
 # ----------------------------------------------------------------------------
 with st.sidebar:
     st.markdown("<div class='logo-row'><span class='logo-icon'>🛒</span><span class='logo-text'>InsightCart</span></div><div class='sidebar-tagline'>E-Commerce Customer<br>Analytics Platform</div>", unsafe_allow_html=True)
-    st.markdown("---")
+    st.markdown("<hr class='sidebar-divider'>", unsafe_allow_html=True)
 
     if st.session_state.analysis_done:
         # Once there's data loaded, the Dashboard IS the app — no separate
@@ -442,7 +455,7 @@ with st.sidebar:
                 st.session_state.screen = key
                 st.rerun()
 
-    st.markdown("---")
+    st.markdown("<hr class='sidebar-divider'>", unsafe_allow_html=True)
     render_tech_pills()
     st.markdown("<div class='sidebar-version'>Version 1.0</div>", unsafe_allow_html=True)
 
