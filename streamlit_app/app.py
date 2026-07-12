@@ -422,30 +422,35 @@ with st.sidebar:
     st.markdown("<div class='logo-row'><span class='logo-icon'>🛒</span><span class='logo-text'>InsightCart</span></div><div class='sidebar-tagline'>E-Commerce Customer<br>Analytics Platform</div>", unsafe_allow_html=True)
     st.markdown("---")
 
-    nav_items = [
-        ("landing", "🏠 Home"),
-        ("upload", "📂 Upload Dataset"),
-        ("about", "ℹ️ About"),
-    ]
-    for key, label in nav_items:
-        is_current = st.session_state.screen == key
-        if st.button(("▶ " if is_current else "") + label, use_container_width=True, key=f"nav_{key}"):
-            st.session_state.screen = key
-            st.rerun()
-
     if st.session_state.analysis_done:
-        st.markdown("---")
-        st.caption(f"Loaded: {st.session_state.source_name}")
-        if st.button("📊 View Dashboard", use_container_width=True, type="primary"):
-            st.session_state.screen = "dashboard"
-            st.rerun()
-        if st.button("🔄 Start Over / New Dataset", use_container_width=True):
+        # Once there's data loaded, the Dashboard IS the app — no separate
+        # "view it" click that could ever fail to do anything. The only way
+        # off this screen is to explicitly start over with a new file.
+        st.success(f"✅ Loaded: {st.session_state.source_name}")
+        if st.button("🔄 Start Over / New Dataset", use_container_width=True, type="primary"):
             reset_state()
             st.rerun()
+    else:
+        nav_items = [
+            ("landing", "🏠 Home"),
+            ("upload", "📂 Upload Dataset"),
+            ("about", "ℹ️ About"),
+        ]
+        for key, label in nav_items:
+            is_current = st.session_state.screen == key
+            if st.button(("▶ " if is_current else "") + label, use_container_width=True, key=f"nav_{key}"):
+                st.session_state.screen = key
+                st.rerun()
 
     st.markdown("---")
     render_tech_pills()
     st.markdown("<div class='sidebar-version'>Version 1.0</div>", unsafe_allow_html=True)
+
+# Once analysis is done, always render the dashboard — this is the only
+# screen that matters at that point, and forcing it here means there is no
+# navigation state left that could point somewhere broken.
+if st.session_state.analysis_done:
+    st.session_state.screen = "dashboard"
 
 # ----------------------------------------------------------------------------
 # SCREEN — HOME
