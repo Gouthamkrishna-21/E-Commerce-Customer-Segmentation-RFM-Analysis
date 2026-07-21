@@ -213,7 +213,7 @@ def kpi_card(col, icon, label, value):
 
 
 def render_footer():
-    st.markdown("<div class='app-footer'><b>InsightCart</b><br>E-Commerce Customer Analytics — Mentorship Project<br>© 2025</div>", unsafe_allow_html=True)
+    st.markdown("<div class='app-footer'><b>InsightCart</b><br>E-Commerce Customer Analytics Platform</div>", unsafe_allow_html=True)
 
 
 def render_workflow():
