@@ -27,13 +27,6 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Design system: a single consistent blue / navy / white theme — deliberately
-# restrained (one primary accent) rather than a rainbow of colors, per
-# standard product-UI practice. Every CSS rule below is written on a single
-# line with no leading whitespace: Streamlit runs this string through a
-# Markdown parser before rendering, and any line indented 4+ spaces gets
-# treated as a literal code block and rendered as visible text instead of
-# being applied as styling.
 CUSTOM_CSS = """
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700;9..144,800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
@@ -103,9 +96,6 @@ hr { border-color: var(--rule) !important; }
 """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
-# Ordered "grade" ramp: slate (least valuable) up through warning amber to
-# blue/emerald (most valuable) — an ordinal scale, not an arbitrary category
-# palette, consistent with the rest of the app's blue/navy chrome.
 SEGMENT_COLORS = {
     "Lost Customers": "#94A3B8",
     "At Risk": "#F59E0B",
@@ -128,11 +118,6 @@ REQUIRED_COLS = ["InvoiceNo", "CustomerID", "InvoiceDate", "Quantity", "UnitPric
 OPTIONAL_COLS = ["Description", "Country", "StockCode"]
 NON_PRODUCT_CODES = {"POST", "CARRIAGE", "MANUAL", "BANK CHARGES", "DOT", "AMAZONFEE", "M", "PADS", "CRUK"}
 
-# Different e-commerce exports (Shopify, WooCommerce, Amazon Seller reports,
-# etc.) name the same fields differently. Rather than silently breaking on
-# any file that isn't a byte-for-byte match to the original Kaggle schema,
-# InsightCart auto-suggests a mapping from common aliases and lets the user
-# confirm/adjust it before running the pipeline.
 COLUMN_ALIASES = {
     "InvoiceNo": ["invoiceno", "invoice no", "invoice_no", "invoice number", "order id", "orderid", "order_no", "order number"],
     "CustomerID": ["customerid", "customer id", "customer_id", "client id", "clientid", "user id", "userid"],
@@ -150,13 +135,10 @@ def _normalize(name: str) -> str:
 
 
 def auto_map_columns(columns) -> dict:
-    """Best-effort guess of which uploaded column corresponds to each
-    canonical field. Returns {canonical_name: guessed_column_or_None}."""
     normalized_lookup = {_normalize(c): c for c in columns}
     guesses = {}
     for canonical, aliases in COLUMN_ALIASES.items():
         guess = None
-        # exact case-insensitive match on the canonical name itself first
         if _normalize(canonical) in normalized_lookup:
             guess = normalized_lookup[_normalize(canonical)]
         else:
@@ -194,6 +176,7 @@ for key, default in {
     "clean_stats": None,
     "reference_date": None,
     "source_name": None,
+    "currency": "£",  # NEW: default currency symbol, user-selectable on Upload screen
 }.items():
     if key not in st.session_state:
         st.session_state[key] = default
@@ -203,6 +186,7 @@ def reset_state():
     for key in ["analysis_done", "is_sample", "rfm_df", "clean_df", "clean_stats", "reference_date", "source_name"]:
         st.session_state[key] = False if key in ("analysis_done", "is_sample") else None
     st.session_state["screen"] = "landing"
+    st.session_state["currency"] = "£"
 
 
 # ----------------------------------------------------------------------------
@@ -243,10 +227,6 @@ def render_tech_pills():
 # ----------------------------------------------------------------------------
 @st.cache_data(show_spinner=False)
 def _parse_csv_bytes(raw_bytes: bytes) -> pd.DataFrame:
-    # Single-pass read: utf-8 with bad bytes replaced instead of silently
-    # substituted characters is far faster than retrying whole encodings in
-    # sequence on a large file. Only fall back to other encodings if this
-    # genuinely fails (rare — bad delimiter, corrupt file, etc.).
     try:
         df = pd.read_csv(io.BytesIO(raw_bytes), encoding="utf-8", encoding_errors="replace", low_memory=False)
     except Exception:
@@ -261,8 +241,6 @@ def _parse_csv_bytes(raw_bytes: bytes) -> pd.DataFrame:
     if df is None:
         raise ValueError("Could not parse this file as CSV. Please check the format/encoding.")
 
-    # Downcast numeric columns where present — smaller dtypes mean faster
-    # groupby/agg later on large files, at no cost to accuracy for this data.
     if "Quantity" in df.columns:
         df["Quantity"] = pd.to_numeric(df["Quantity"], errors="coerce", downcast="integer")
     if "UnitPrice" in df.columns:
@@ -271,10 +249,6 @@ def _parse_csv_bytes(raw_bytes: bytes) -> pd.DataFrame:
 
 
 def read_any_csv(uploaded_file) -> pd.DataFrame:
-    # Cached on the raw bytes (cheap to hash) rather than on a DataFrame
-    # (expensive to hash) — this file gets re-parsed on every mapping-UI
-    # interaction, so this cache is what keeps a large upload from being
-    # re-read from scratch on every selectbox click.
     return _parse_csv_bytes(uploaded_file.getvalue())
 
 
@@ -289,18 +263,15 @@ def clean_pipeline(df: pd.DataFrame):
     stats = {"initial_rows": len(df), "columns": df.shape[1], "missing_values": int(df.isnull().sum().sum())}
     df = df.copy()
 
-    # 1. Exact duplicate rows
     stats["duplicate_rows"] = int(df.duplicated().sum())
     df = df.drop_duplicates()
 
-    # 2. Null CustomerIDs (can't attribute revenue -> excluded from RFM)
     stats["null_customer_id"] = int(df["CustomerID"].isnull().sum())
     df = df.dropna(subset=["CustomerID"])
 
     if "Description" in df.columns:
         df["Description"] = df["Description"].fillna("Unknown")
 
-    # 3. Parse dates
     df["InvoiceDate"] = pd.to_datetime(df["InvoiceDate"], errors="coerce")
     stats["invalid_dates"] = int(df["InvoiceDate"].isnull().sum())
     df = df.dropna(subset=["InvoiceDate"])
@@ -311,18 +282,15 @@ def clean_pipeline(df: pd.DataFrame):
         stats["date_min"] = None
         stats["date_max"] = None
 
-    # 4. Cancelled orders (InvoiceNo starting with 'C')
     invoice_str = df["InvoiceNo"].astype(str)
     cancelled_mask = invoice_str.str.startswith("C")
     stats["cancelled_orders"] = int(cancelled_mask.sum())
     df = df[~cancelled_mask]
 
-    # 5. Non-positive quantity / negative price
     stats["bad_quantity"] = int((df["Quantity"] <= 0).sum())
     stats["bad_price"] = int((df["UnitPrice"] < 0).sum())
     df = df[(df["Quantity"] > 0) & (df["UnitPrice"] >= 0)]
 
-    # 6. Non-product stock codes (postage, fees, manual adjustments, etc.)
     if "StockCode" in df.columns:
         code_mask = df["StockCode"].astype(str).str.upper().isin(NON_PRODUCT_CODES)
         stats["non_product_rows"] = int(code_mask.sum())
@@ -330,7 +298,6 @@ def clean_pipeline(df: pd.DataFrame):
     else:
         stats["non_product_rows"] = 0
 
-    # 7. Revenue column
     df["TotalSales"] = (df["Quantity"] * df["UnitPrice"]).round(2)
 
     stats["final_rows"] = len(df)
@@ -340,7 +307,6 @@ def clean_pipeline(df: pd.DataFrame):
 
 
 def _safe_qcut_rank(series: pd.Series, q: int, labels: list, ascending: bool = True) -> pd.Series:
-    """Rank-based qcut that never fails on duplicate values / small samples."""
     n = series.notna().sum()
     if n == 0:
         return pd.Series([labels[0]] * len(series), index=series.index)
@@ -372,9 +338,7 @@ def compute_rfm(df: pd.DataFrame):
 def score_and_segment(rfm: pd.DataFrame):
     rfm = rfm.copy()
 
-    # Lower recency = better -> ascending rank, labels 5..1
     rfm["R_Score"] = _safe_qcut_rank(rfm["Recency"], 5, [5, 4, 3, 2, 1], ascending=True).astype(int)
-    # Higher frequency/monetary = better -> ascending rank, labels 1..5
     rfm["F_Score"] = _safe_qcut_rank(rfm["Frequency"], 5, [1, 2, 3, 4, 5], ascending=True).astype(int)
     rfm["M_Score"] = _safe_qcut_rank(rfm["Monetary"], 5, [1, 2, 3, 4, 5], ascending=True).astype(int)
 
@@ -400,15 +364,12 @@ def score_and_segment(rfm: pd.DataFrame):
 
 
 def load_precomputed_rfm(rfm_df: pd.DataFrame):
-    """For the bundled sample report which already has scores/segments/deciles."""
     rfm_df = rfm_df.copy()
     rfm_df["Segment"] = rfm_df["Segment"].astype(str)
     return rfm_df
 
 
 def find_sample_file() -> str:
-    """Look for the bundled sample RFM csv in a few likely spots so this
-    works whether app.py sits at repo root or in a subfolder like streamlit_app/."""
     import os
     here = os.path.dirname(os.path.abspath(__file__))
     candidates = [
@@ -436,9 +397,6 @@ with st.sidebar:
     st.markdown("<hr class='sidebar-divider'>", unsafe_allow_html=True)
 
     if st.session_state.analysis_done:
-        # Once there's data loaded, the Dashboard IS the app — no separate
-        # "view it" click that could ever fail to do anything. The only way
-        # off this screen is to explicitly start over with a new file.
         st.success(f"✅ Loaded: {st.session_state.source_name}")
         if st.button("🔄 Start Over / New Dataset", use_container_width=True, type="primary"):
             reset_state()
@@ -459,9 +417,6 @@ with st.sidebar:
     render_tech_pills()
     st.markdown("<div class='sidebar-version'>Version 1.0</div>", unsafe_allow_html=True)
 
-# Once analysis is done, always render the dashboard — this is the only
-# screen that matters at that point, and forcing it here means there is no
-# navigation state left that could point somewhere broken.
 if st.session_state.analysis_done:
     st.session_state.screen = "dashboard"
 
@@ -608,6 +563,16 @@ if st.session_state.screen == "upload":
     if st.session_state.analysis_done:
         st.info(f"Currently loaded: **{st.session_state.source_name}**. Uploading a new file below will replace it.")
 
+    # NEW: currency selector — lets the user tell the app what currency
+    # their file's UnitPrice/TotalSales values are actually in, instead of
+    # the dashboard hardcoding £ regardless of the uploaded data's origin.
+    currency_options = ["£", "$", "₹", "€"]
+    st.session_state.currency = st.selectbox(
+        "Currency used in this file",
+        currency_options,
+        index=currency_options.index(st.session_state.currency) if st.session_state.currency in currency_options else 0,
+    )
+
     st.write("")
     uploaded_file = st.file_uploader("Upload transaction CSV", type=["csv"], label_visibility="collapsed")
 
@@ -664,6 +629,7 @@ if st.session_state.screen == "upload":
             st.session_state.is_sample = True
             st.session_state.analysis_done = True
             st.session_state.source_name = "Sample UK Retail Dataset (precomputed)"
+            st.session_state.currency = "£"  # sample dataset is genuinely GBP
             st.session_state.screen = "dashboard"
         st.rerun()
 
@@ -674,9 +640,6 @@ if st.session_state.screen == "upload":
             st.error(f"Couldn't read the file: {e}")
             st.stop()
 
-        # Silently rename columns using the same alias detection shown above —
-        # recomputed straight from the file's own headers, not from any widget,
-        # so there's no interactive state that can go stale across screens.
         guesses = auto_map_columns(raw_df.columns)
         rename_map = {v: k for k, v in guesses.items() if v is not None and v != k}
         for canonical in COLUMN_ALIASES:
@@ -764,6 +727,8 @@ if st.session_state.screen != "dashboard":
     st.session_state.screen = "landing"
     st.rerun()
 
+CUR = st.session_state.currency  # NEW: shorthand used throughout the dashboard below
+
 rfm = st.session_state.rfm_df.copy()
 rfm["Segment"] = pd.Categorical(rfm["Segment"], categories=SEGMENT_ORDER, ordered=True)
 
@@ -775,7 +740,7 @@ st.markdown(
     "<div class='hero-box'>"
     "<div class='hero-eyebrow'>📊 Customer Dashboard</div>"
     f"<h1>{total_customers_hero:,} customers, scored</h1>"
-    f"<div class='sub'>Drawn from <b>{source_label}</b> — £{total_revenue_hero:,.0f} in "
+    f"<div class='sub'>Drawn from <b>{source_label}</b> — {CUR}{total_revenue_hero:,.0f} in "
     "total spend, sorted from Champion to Lost below.</div>"
     "</div>",
     unsafe_allow_html=True,
@@ -846,8 +811,8 @@ with tabs[1]:
 
     o1, o2, o3, o4, o5 = st.columns(5)
     kpi_card(o1, "👥", "Total Customers", f"{total_customers:,}")
-    kpi_card(o2, "💰", "Total Revenue", f"£{total_revenue:,.0f}")
-    kpi_card(o3, "🛍️", "Avg Spend / Customer", f"£{avg_monetary:,.0f}")
+    kpi_card(o2, "💰", "Total Revenue", f"{CUR}{total_revenue:,.0f}")
+    kpi_card(o3, "🛍️", "Avg Spend / Customer", f"{CUR}{avg_monetary:,.0f}")
     kpi_card(o4, "🔁", "Avg Orders / Customer", f"{avg_frequency:,.1f}")
     kpi_card(o5, "⏱️", "Avg Recency (days)", f"{avg_recency:,.0f}")
 
@@ -874,7 +839,7 @@ with tabs[1]:
             title="Revenue Contribution by Segment",
         )
         fig2.update_layout(
-            showlegend=False, yaxis_title="Revenue (£)",
+            showlegend=False, yaxis_title=f"Revenue ({CUR})",
             template=PLOT_TEMPLATE, font_family=FONT_FAMILY, plot_bgcolor="#F4F6FA", paper_bgcolor="#F4F6FA",
         )
         st.plotly_chart(fig2, use_container_width=True)
@@ -919,7 +884,7 @@ with tabs[2]:
             fig_rev.update_traces(line_color="#2563EB", fill="tozeroy", fillcolor="rgba(37,99,235,0.12)")
             fig_rev.update_layout(
                 template=PLOT_TEMPLATE, font_family=FONT_FAMILY,
-                plot_bgcolor="#F4F6FA", paper_bgcolor="#F4F6FA", yaxis_title="Revenue (£)",
+                plot_bgcolor="#F4F6FA", paper_bgcolor="#F4F6FA", yaxis_title=f"Revenue ({CUR})",
             )
             st.plotly_chart(fig_rev, use_container_width=True)
         with tcol2:
@@ -936,14 +901,14 @@ with tabs[2]:
             country_rev = clean_df.groupby("Country")["TotalSales"].sum().sort_values(ascending=False).head(10).reset_index()
             country_rev.columns = ["Country", "Revenue"]
             fig_country = px.bar(country_rev.sort_values("Revenue"), x="Revenue", y="Country", orientation="h", text="Revenue")
-            fig_country.update_traces(marker_color="#2563EB", texttemplate="£%{text:,.0f}", textposition="outside")
+            fig_country.update_traces(marker_color="#2563EB", texttemplate=f"{CUR}%{{text:,.0f}}", textposition="outside")
             fig_country.update_layout(
                 height=380, template=PLOT_TEMPLATE, font_family=FONT_FAMILY,
-                plot_bgcolor="#F4F6FA", paper_bgcolor="#F4F6FA", xaxis_title="Revenue (£)", yaxis_title="",
+                plot_bgcolor="#F4F6FA", paper_bgcolor="#F4F6FA", xaxis_title=f"Revenue ({CUR})", yaxis_title="",
             )
             st.plotly_chart(fig_country, use_container_width=True)
             top_country = country_rev.iloc[0]
-            st.info(f"🌍 **{top_country['Country']}** is the top market by revenue at £{top_country['Revenue']:,.0f}.")
+            st.info(f"🌍 **{top_country['Country']}** is the top market by revenue at {CUR}{top_country['Revenue']:,.0f}.")
         else:
             st.info("No `Country` column in this file — skipping the geography breakdown.")
 
@@ -964,10 +929,10 @@ with tabs[3]:
             with pcol1:
                 top_rev = prod_summary.sort_values("Revenue", ascending=False).head(10).sort_values("Revenue")
                 fig_prod_rev = px.bar(top_rev, x="Revenue", y="Label", orientation="h", text="Revenue", title="Top 10 Products by Revenue")
-                fig_prod_rev.update_traces(marker_color="#2563EB", texttemplate="£%{text:,.0f}", textposition="outside")
+                fig_prod_rev.update_traces(marker_color="#2563EB", texttemplate=f"{CUR}%{{text:,.0f}}", textposition="outside")
                 fig_prod_rev.update_layout(
                     height=420, template=PLOT_TEMPLATE, font_family=FONT_FAMILY,
-                    plot_bgcolor="#F4F6FA", paper_bgcolor="#F4F6FA", xaxis_title="Revenue (£)", yaxis_title="",
+                    plot_bgcolor="#F4F6FA", paper_bgcolor="#F4F6FA", xaxis_title=f"Revenue ({CUR})", yaxis_title="",
                 )
                 st.plotly_chart(fig_prod_rev, use_container_width=True)
             with pcol2:
@@ -983,7 +948,7 @@ with tabs[3]:
             with st.expander("Full product table"):
                 st.dataframe(
                     prod_summary[[product_col, "Revenue", "Units"]].sort_values("Revenue", ascending=False)
-                    .style.format({"Revenue": "£{:,.2f}"}),
+                    .style.format({"Revenue": f"{CUR}{{:,.2f}}"}),
                     use_container_width=True, hide_index=True,
                 )
         else:
@@ -1009,17 +974,12 @@ with tabs[4]:
     st.dataframe(
         seg_summary.style.format({
             "Avg_Recency": "{:.0f}", "Avg_Frequency": "{:.1f}",
-            "Avg_Monetary": "£{:,.0f}", "Total_Revenue": "£{:,.0f}",
+            "Avg_Monetary": f"{CUR}{{:,.0f}}", "Total_Revenue": f"{CUR}{{:,.0f}}",
         }),
         use_container_width=True, hide_index=True,
     )
 
     rfm_plot = rfm.copy()
-    # Frequency is a small set of discrete integers, so plain scatter stacks
-    # hundreds of full-opacity bubbles into solid vertical lines. Deterministic
-    # jitter (seeded, so it's stable across reruns) spreads points horizontally
-    # without distorting the underlying value; lower opacity + a thin outline
-    # + a capped bubble size keep dense clusters readable instead of solid blobs.
     rng = np.random.default_rng(42)
     rfm_plot["Frequency_jitter"] = rfm_plot["Frequency"] + rng.uniform(-0.18, 0.18, size=len(rfm_plot))
 
@@ -1077,7 +1037,7 @@ with tabs[5]:
     st.success(f"📈 Decile 1 (top 10% of customers) generates **{top_decile_share}%** of total revenue.")
 
     st.dataframe(
-        decile_summary.style.format({"Total_Revenue": "£{:,.0f}", "Revenue Share %": "{:.2f}%"}),
+        decile_summary.style.format({"Total_Revenue": f"{CUR}{{:,.0f}}", "Revenue Share %": "{:.2f}%"}),
         use_container_width=True, hide_index=True,
     )
 
@@ -1100,7 +1060,7 @@ with tabs[6]:
 
     st.write(f"Showing **{len(filtered):,}** of {len(rfm):,} customers")
     st.dataframe(
-        filtered.sort_values("Monetary", ascending=False).style.format({"Monetary": "£{:,.2f}"}),
+        filtered.sort_values("Monetary", ascending=False).style.format({"Monetary": f"{CUR}{{:,.2f}}"}),
         use_container_width=True, height=420, hide_index=True,
     )
 
