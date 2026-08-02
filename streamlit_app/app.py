@@ -835,7 +835,7 @@ with tabs[1]:
         seg_rev["Share %"] = (seg_rev["Monetary"] / seg_rev["Monetary"].sum() * 100).round(1)
         fig2 = px.bar(
             seg_rev, x="Segment", y="Monetary", color="Segment",
-            color_discrete_map=SEGMENT_COLORS, text=seg_rev["Share %"].astype(str) + "%",
+            color_discrete_map=SEGMENT_COLORS, text=seg_rev["Share %"].map(lambda x: f"{x:.1f}%"),
             title="Revenue Contribution by Segment",
         )
         fig2.update_layout(
@@ -848,7 +848,7 @@ with tabs[1]:
     top_champ_count = int(seg_counts.loc[seg_counts["Segment"] == "Champions", "Customers"].values[0]) if "Champions" in seg_counts["Segment"].values else 0
     st.info(
         f"💡 **{top_seg['Segment']}** drive the largest share of revenue "
-        f"({top_seg['Share %']}%). Champions alone number **{top_champ_count:,}** customers."
+        f"({top_seg['Share %']:.1f}%). Champions alone number **{top_champ_count:,}** customers."
     )
 
 # ---- TAB: Trends & Geography ---------------------------------------------
@@ -924,6 +924,7 @@ with tabs[3]:
         if product_col:
             prod_summary = clean_df.groupby(product_col).agg(Revenue=("TotalSales", "sum"), Units=("Quantity", "sum")).reset_index()
             prod_summary["Label"] = prod_summary[product_col].astype(str).str.slice(0, 38)
+            prod_summary["Label"] = prod_summary["Label"] + prod_summary.groupby("Label").cumcount().apply(lambda i: f" ({i+1})" if i > 0 else "")
 
             pcol1, pcol2 = st.columns(2)
             with pcol1:
@@ -1029,12 +1030,12 @@ with tabs[5]:
         decile_summary, x="Decile", y="Revenue Share %", text="Revenue Share %",
         title="Revenue Share by Decile",
     )
-    fig5.update_traces(marker_color="#2563EB", texttemplate="%{text}%", textposition="outside")
+    fig5.update_traces(marker_color="#2563EB", texttemplate="%{y:.1f}%", textposition="outside")
     fig5.update_layout(template=PLOT_TEMPLATE, font_family=FONT_FAMILY, plot_bgcolor="#F4F6FA", paper_bgcolor="#F4F6FA")
     st.plotly_chart(fig5, use_container_width=True)
 
     top_decile_share = decile_summary.iloc[0]["Revenue Share %"]
-    st.success(f"📈 Decile 1 (top 10% of customers) generates **{top_decile_share}%** of total revenue.")
+    st.success(f"📈 Decile 1 (top 10% of customers) generates **{top_decile_share:.1f}%** of total revenue.")
 
     st.dataframe(
         decile_summary.style.format({"Total_Revenue": f"{CUR}{{:,.0f}}", "Revenue Share %": "{:.2f}%"}),
@@ -1079,7 +1080,7 @@ with tabs[7]:
         st.markdown(
             f"<div class='rec-card' style='border-top-color:{color};'>"
             f"<div class='rec-head'><span class='rec-icon'>{icon}</span><span class='rec-title'>{seg}</span>"
-            f"<span style='margin-left:auto; color:var(--ink-soft); font-size:0.85rem;'>{count:,} customers · {revenue_share}% of revenue</span></div>"
+            f"<span style='margin-left:auto; color:var(--ink-soft); font-size:0.85rem;'>{count:,} customers · {revenue_share:.1f}% of revenue</span></div>"
             f"<p class='rec-desc'>{SEGMENT_DESCRIPTIONS[seg]}</p>"
             f"<p class='rec-action'><b>Recommendation:</b> {RECOMMENDATIONS[seg]}</p>"
             "</div>",
