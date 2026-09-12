@@ -5,6 +5,11 @@ Upload a raw e-commerce transaction file. InsightCart validates it, cleans it
 the way a real analyst would, computes RFM metrics, scores and segments
 customers, and renders a full interactive dashboard with business
 recommendations.
+
+v1.1 additions:
+  - Dynamic segment thresholds (user-adjustable Overall_Score cut points)
+  - Actionable, downloadable campaign lists per segment
+  - Cohort retention (month-over-month) + simplified LTV projection
 """
 
 import io
@@ -111,6 +116,7 @@ SEGMENT_ICONS = {
     "Lost Customers": "👋",
 }
 SEGMENT_ORDER = ["Champions", "Loyal Customers", "Potential Loyalists", "At Risk", "Lost Customers"]
+SEGMENT_ORDER_LOW_TO_HIGH = list(reversed(SEGMENT_ORDER))  # Lost -> Champions, matches ascending Overall_Score
 PLOT_TEMPLATE = "simple_white"
 FONT_FAMILY = "Inter, sans-serif"
 
@@ -164,6 +170,40 @@ RECOMMENDATIONS = {
     "Lost Customers": "Run churn surveys and re-engagement campaigns to understand why they left and win them back.",
 }
 
+# Ready-to-send campaign copy per segment — exported alongside the customer
+# list so the segmentation turns directly into something a marketer can load
+# into an email/CRM tool, rather than just a chart to look at.
+CAMPAIGN_SUBJECT = {
+    "Champions": "You're one of our top customers — here's early access 🎁",
+    "Loyal Customers": "A little something extra, just for you",
+    "Potential Loyalists": "We picked these out for you",
+    "At Risk": "We miss you — here's 15% off to come back",
+    "Lost Customers": "It's been a while... can we win you back?",
+}
+CAMPAIGN_OFFER = {
+    "Champions": "Early access to new arrivals + invite to a VIP loyalty tier.",
+    "Loyal Customers": "Bundle discount / free shipping threshold nudge to raise average order value.",
+    "Potential Loyalists": "Personalized product recommendations based on last purchase category.",
+    "At Risk": "Time-limited win-back discount (10-20%) with a clear expiry to create urgency.",
+    "Lost Customers": "Short win-back survey + a larger one-time incentive (20%+) to re-activate.",
+}
+
+# Default cut points on the 3–15 Overall_Score scale that separate the five
+# segments. Kept as a module-level constant so the UI can offer "reset to
+# default" alongside the adjustable version in session state.
+DEFAULT_SEGMENT_BINS = [2, 5, 8, 11, 13, 15]
+
+# Heuristic probability that a customer in each segment keeps buying over the
+# LTV projection horizon. These are editable in the UI — they are directional
+# assumptions, not a fitted probabilistic model (e.g. BG/NBD).
+SEGMENT_RETENTION_DEFAULTS = {
+    "Champions": 0.90,
+    "Loyal Customers": 0.70,
+    "Potential Loyalists": 0.50,
+    "At Risk": 0.25,
+    "Lost Customers": 0.05,
+}
+
 # ----------------------------------------------------------------------------
 # SESSION STATE
 # ----------------------------------------------------------------------------
@@ -176,7 +216,10 @@ for key, default in {
     "clean_stats": None,
     "reference_date": None,
     "source_name": None,
-    "currency": "£",  # NEW: default currency symbol, user-selectable on Upload screen
+    "currency": "£",  # default currency symbol, user-selectable on Upload screen
+    "segment_bins": list(DEFAULT_SEGMENT_BINS),  # user-adjustable segment cut points
+    "retention_assumptions": dict(SEGMENT_RETENTION_DEFAULTS),  # user-adjustable LTV assumptions
+    "ltv_horizon_months": 12,
 }.items():
     if key not in st.session_state:
         st.session_state[key] = default
@@ -187,6 +230,9 @@ def reset_state():
         st.session_state[key] = False if key in ("analysis_done", "is_sample") else None
     st.session_state["screen"] = "landing"
     st.session_state["currency"] = "£"
+    st.session_state["segment_bins"] = list(DEFAULT_SEGMENT_BINS)
+    st.session_state["retention_assumptions"] = dict(SEGMENT_RETENTION_DEFAULTS)
+    st.session_state["ltv_horizon_months"] = 12
 
 
 # ----------------------------------------------------------------------------
@@ -201,7 +247,7 @@ def render_footer():
 
 
 def render_workflow():
-    steps = [("📤", "Upload CSV"), ("🧹", "Cleaning"), ("📊", "RFM Analysis"), ("📈", "Business Insights"), ("⬇️", "Download Reports")]
+    steps = [("📤", "Upload CSV"), ("🧹", "Cleaning"), ("📊", "RFM Analysis"), ("🎚️", "Tune Segments"), ("🔮", "LTV & Cohorts"), ("⬇️", "Campaign Lists")]
     parts = []
     for i, (icon, label) in enumerate(steps):
         parts.append(f"<div class='workflow-step'><div class='wf-icon'>{icon}</div><div class='wf-label'>{label}</div></div>")
@@ -335,21 +381,26 @@ def compute_rfm(df: pd.DataFrame):
     return rfm, reference_date
 
 
-def score_and_segment(rfm: pd.DataFrame):
+def segment_from_bins(overall_score: pd.Series, bins: list) -> pd.Series:
+    """Map Overall_Score (3-15) to a segment label using the given 6 bin
+    edges (5 segments). Used both at initial scoring time and whenever the
+    user drags the threshold sliders in the dashboard."""
+    seg = pd.cut(overall_score, bins=bins, labels=SEGMENT_ORDER_LOW_TO_HIGH)
+    seg = seg.astype(str)
+    seg[~seg.isin(SEGMENT_ORDER)] = "Potential Loyalists"
+    return seg
+
+
+def score_and_segment(rfm: pd.DataFrame, bins: list = None):
     rfm = rfm.copy()
+    bins = bins or DEFAULT_SEGMENT_BINS
 
     rfm["R_Score"] = _safe_qcut_rank(rfm["Recency"], 5, [5, 4, 3, 2, 1], ascending=True).astype(int)
     rfm["F_Score"] = _safe_qcut_rank(rfm["Frequency"], 5, [1, 2, 3, 4, 5], ascending=True).astype(int)
     rfm["M_Score"] = _safe_qcut_rank(rfm["Monetary"], 5, [1, 2, 3, 4, 5], ascending=True).astype(int)
 
     rfm["Overall_Score"] = rfm["R_Score"] + rfm["F_Score"] + rfm["M_Score"]
-
-    rfm["Segment"] = pd.cut(
-        rfm["Overall_Score"],
-        bins=[2, 5, 8, 11, 13, 15],
-        labels=["Lost Customers", "At Risk", "Potential Loyalists", "Loyal Customers", "Champions"],
-    ).astype(str)
-    rfm.loc[~rfm["Segment"].isin(SEGMENT_ORDER), "Segment"] = "Potential Loyalists"
+    rfm["Segment"] = segment_from_bins(rfm["Overall_Score"], bins)
 
     rfm = rfm.sort_values("Monetary", ascending=False)
     n = len(rfm)
@@ -415,7 +466,7 @@ with st.sidebar:
 
     st.markdown("<hr class='sidebar-divider'>", unsafe_allow_html=True)
     render_tech_pills()
-    st.markdown("<div class='sidebar-version'>Version 1.0</div>", unsafe_allow_html=True)
+    st.markdown("<div class='sidebar-version'>Version 1.1</div>", unsafe_allow_html=True)
 
 if st.session_state.analysis_done:
     st.session_state.screen = "dashboard"
@@ -475,8 +526,9 @@ if st.session_state.screen == "landing":
             "<div class='step-card'>"
             "<div class='icon-badge badge-teal'>🎯</div>"
             "<h4>Get an action, not just a chart</h4>"
-            "<p>Every segment comes with a concrete marketing recommendation — VIP perks for Champions, "
-            "urgent win-back offers for At Risk — so the analysis turns into a plan.</p>"
+            "<p>Every segment comes with a concrete marketing recommendation and a downloadable campaign "
+            "list — VIP perks for Champions, urgent win-back offers for At Risk — so the analysis turns "
+            "into something you can load straight into your CRM.</p>"
             "</div>",
             unsafe_allow_html=True,
         )
@@ -527,7 +579,9 @@ if st.session_state.screen == "landing":
         "<b>How segments get assigned:</b> each of R, F, and M is ranked 1–5 across your whole customer "
         "base (5 = best), then summed into an Overall Score from 3–15. That score sorts every customer "
         "into one of five segments — <b>Champions</b> (top scorers), <b>Loyal Customers</b>, "
-        "<b>Potential Loyalists</b>, <b>At Risk</b>, and <b>Lost Customers</b> (lowest scorers)."
+        "<b>Potential Loyalists</b>, <b>At Risk</b>, and <b>Lost Customers</b> (lowest scorers). "
+        "The score cut-points are just sensible defaults — you can drag them to fit your own business "
+        "once your dashboard is open."
         "</div>",
         unsafe_allow_html=True,
     )
@@ -563,9 +617,9 @@ if st.session_state.screen == "upload":
     if st.session_state.analysis_done:
         st.info(f"Currently loaded: **{st.session_state.source_name}**. Uploading a new file below will replace it.")
 
-    # NEW: currency selector — lets the user tell the app what currency
-    # their file's UnitPrice/TotalSales values are actually in, instead of
-    # the dashboard hardcoding £ regardless of the uploaded data's origin.
+    # Currency selector — lets the user tell the app what currency their
+    # file's UnitPrice/TotalSales values are actually in, instead of the
+    # dashboard hardcoding £ regardless of the uploaded data's origin.
     currency_options = ["£", "$", "₹", "€"]
     st.session_state.currency = st.selectbox(
         "Currency used in this file",
@@ -664,7 +718,7 @@ if st.session_state.screen == "upload":
             progress.progress(70, text="Generating RFM scores...")
             rfm, ref_date = compute_rfm(clean_df)
             progress.progress(90, text="Scoring & segmenting customers...")
-            rfm = score_and_segment(rfm)
+            rfm = score_and_segment(rfm, bins=st.session_state.segment_bins)
             progress.progress(100, text="Done!")
         except Exception as e:
             st.error(f"Something went wrong while processing this dataset: {e}")
@@ -706,7 +760,15 @@ if st.session_state.screen == "about":
         st.rerun()
 
     st.markdown("#### Features")
-    features = ["Automated Data Cleaning", "RFM Analysis (Recency, Frequency, Monetary)", "Customer Segmentation", "Business Recommendations per Segment", "Interactive Dashboards & Charts", "Downloadable CSV Reports"]
+    features = [
+        "Automated Data Cleaning",
+        "RFM Analysis (Recency, Frequency, Monetary)",
+        "Customer Segmentation with User-Adjustable Thresholds",
+        "Business Recommendations & Downloadable Campaign Lists per Segment",
+        "Cohort Retention & Simplified LTV Projections",
+        "Interactive Dashboards & Charts",
+        "Downloadable CSV Reports",
+    ]
     for f in features:
         st.markdown(f"<div class='about-feature'>✔ {f}</div>", unsafe_allow_html=True)
 
@@ -727,10 +789,12 @@ if st.session_state.screen != "dashboard":
     st.session_state.screen = "landing"
     st.rerun()
 
-CUR = st.session_state.currency  # NEW: shorthand used throughout the dashboard below
+CUR = st.session_state.currency  # shorthand used throughout the dashboard below
 
 rfm = st.session_state.rfm_df.copy()
-rfm["Segment"] = pd.Categorical(rfm["Segment"], categories=SEGMENT_ORDER, ordered=True)
+rfm["Segment"] = pd.Categorical(rfm["Segment"].astype(str), categories=SEGMENT_ORDER, ordered=True)
+
+has_overall_score = "Overall_Score" in rfm.columns
 
 source_label = "Sample UK Retail Dataset (precomputed)" if st.session_state.is_sample else st.session_state.source_name
 total_customers_hero = len(rfm)
@@ -746,7 +810,58 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-tabs = st.tabs(["🧹 Data Cleaning", "🏠 Overview", "🌍 Trends & Geography", "📦 Product Performance", "🎯 Segmentation", "🔟 Decile Analysis", "🔍 Customer Explorer", "💡 Recommendations"])
+# ---- Dynamic segment thresholds ------------------------------------------
+# Lets the user drag the Overall_Score cut points instead of living with the
+# hardcoded 5/8/11/13 bins. Applies immediately to every tab below since we
+# recompute `rfm["Segment"]` right here, before any tab is rendered.
+with st.expander("🎚️ Customize Segment Thresholds", expanded=False):
+    if not has_overall_score:
+        st.info(
+            "Threshold customization needs the underlying R/F/M scores, which this precomputed "
+            "sample report doesn't include. Upload your own transaction file to unlock this."
+        )
+    else:
+        st.caption(
+            "Each customer's Overall Score runs from 3 (worst) to 15 (best). Drag the boundaries "
+            "below to decide where one segment ends and the next begins — useful if your business "
+            "wants a stricter or looser definition of \"Champion\", for example."
+        )
+        tcol1, tcol2, tcol3, tcol4 = st.columns(4)
+        b0, b1, b2, b3, b4, b5 = st.session_state.segment_bins
+        with tcol1:
+            new_b1 = st.slider("Lost ↔ At Risk", 3, 13, int(b1), key="thr_b1")
+        with tcol2:
+            new_b2 = st.slider("At Risk ↔ Potential", new_b1 + 1, 13, max(int(b2), new_b1 + 1), key="thr_b2")
+        with tcol3:
+            new_b3 = st.slider("Potential ↔ Loyal", new_b2 + 1, 14, max(int(b3), new_b2 + 1), key="thr_b3")
+        with tcol4:
+            new_b4 = st.slider("Loyal ↔ Champions", new_b3 + 1, 14, max(int(b4), new_b3 + 1), key="thr_b4")
+
+        acol1, acol2 = st.columns(2)
+        with acol1:
+            if st.button("✅ Apply thresholds", type="primary", use_container_width=True):
+                st.session_state.segment_bins = [2, new_b1, new_b2, new_b3, new_b4, 15]
+                st.rerun()
+        with acol2:
+            if st.button("↩️ Reset to defaults", use_container_width=True):
+                st.session_state.segment_bins = list(DEFAULT_SEGMENT_BINS)
+                st.rerun()
+
+if has_overall_score:
+    rfm["Segment"] = segment_from_bins(rfm["Overall_Score"], st.session_state.segment_bins)
+    rfm["Segment"] = pd.Categorical(rfm["Segment"], categories=SEGMENT_ORDER, ordered=True)
+
+tabs = st.tabs([
+    "🧹 Data Cleaning",
+    "🏠 Overview",
+    "🌍 Trends & Geography",
+    "📦 Product Performance",
+    "🎯 Segmentation",
+    "🔟 Decile Analysis",
+    "🔮 Cohort & LTV",
+    "🔍 Customer Explorer",
+    "💡 Recommendations",
+])
 
 # ---- TAB: Data Cleaning ------------------------------------------------
 with tabs[0]:
@@ -986,7 +1101,7 @@ with tabs[4]:
 
     fig3 = px.scatter(
         rfm_plot, x="Frequency_jitter", y="Monetary", color="Segment",
-        color_discrete_map=SEGMENT_COLORS, size="Overall_Score", size_max=14,
+        color_discrete_map=SEGMENT_COLORS, size="Overall_Score" if has_overall_score else None, size_max=14,
         opacity=0.55, category_orders={"Segment": SEGMENT_ORDER},
         hover_data={"Frequency_jitter": False, "CustomerID": True, "Recency": True, "Frequency": True},
         title="Frequency vs Monetary Value by Segment",
@@ -1042,8 +1157,137 @@ with tabs[5]:
         use_container_width=True, hide_index=True,
     )
 
-# ---- TAB: Customer Explorer -----------------------------------------------
+# ---- TAB: Cohort & LTV ------------------------------------------------------
 with tabs[6]:
+    st.subheader("Cohort Retention")
+    st.caption("Groups customers by the month of their first purchase, then tracks what share of each cohort keeps buying in later months.")
+
+    if st.session_state.is_sample or st.session_state.clean_df is None:
+        st.info(
+            "Cohort retention needs the raw transaction file with dates, which the precomputed sample "
+            "doesn't include. Upload your own CSV to see this here."
+        )
+    else:
+        clean_df = st.session_state.clean_df
+        coh = clean_df[["CustomerID", "InvoiceDate"]].copy()
+        coh["OrderMonth"] = coh["InvoiceDate"].dt.to_period("M")
+        coh["CohortMonth"] = coh.groupby("CustomerID")["OrderMonth"].transform("min")
+        coh["PeriodNumber"] = (
+            (coh["OrderMonth"].dt.year - coh["CohortMonth"].dt.year) * 12
+            + (coh["OrderMonth"].dt.month - coh["CohortMonth"].dt.month)
+        )
+
+        cohort_counts = coh.groupby(["CohortMonth", "PeriodNumber"])["CustomerID"].nunique().reset_index()
+        cohort_pivot = cohort_counts.pivot(index="CohortMonth", columns="PeriodNumber", values="CustomerID")
+
+        if cohort_pivot.shape[1] > 1 and cohort_pivot.shape[0] > 1:
+            cohort_sizes = cohort_pivot.iloc[:, 0]
+            retention = cohort_pivot.divide(cohort_sizes, axis=0) * 100
+            retention.index = retention.index.astype(str)
+            # Cap the number of period columns shown so the heatmap stays readable
+            max_periods = min(12, retention.shape[1])
+            retention = retention.iloc[:, :max_periods]
+
+            fig_cohort = go.Figure(data=go.Heatmap(
+                z=retention.values,
+                x=[f"Month {c}" for c in retention.columns],
+                y=list(retention.index),
+                colorscale=[[0, "#F4F6FA"], [1, "#2563EB"]],
+                text=np.round(retention.values, 1),
+                texttemplate="%{text}%",
+                hovertemplate="Cohort: %{y}<br>%{x}<br>Retention: %{z:.1f}%<extra></extra>",
+                colorbar=dict(title="Retention %"),
+                zmin=0, zmax=100,
+            ))
+            fig_cohort.update_layout(
+                height=max(320, 42 * len(retention)), template=PLOT_TEMPLATE, font_family=FONT_FAMILY,
+                plot_bgcolor="#F4F6FA", paper_bgcolor="#F4F6FA",
+                title="Retention % by Acquisition Cohort (Month 0 = 100% by definition)",
+                xaxis_title="", yaxis_title="Cohort (first purchase month)",
+            )
+            st.plotly_chart(fig_cohort, use_container_width=True)
+
+            if 1 in retention.columns:
+                avg_m1 = retention[1].mean()
+                if pd.notna(avg_m1):
+                    st.info(f"📉 On average, **{avg_m1:.1f}%** of a cohort's customers return to buy again in the month right after acquisition.")
+
+            with st.expander("Cohort retention table"):
+                st.dataframe(retention.round(1).style.format("{:.1f}%"), use_container_width=True)
+        else:
+            st.info("This dataset spans too short a time range to show meaningful month-over-month cohort retention.")
+
+    st.markdown("---")
+    st.subheader("Customer Lifetime Value (LTV) Projection")
+    st.caption(
+        "A simplified projection: (average order value) × (monthly purchase rate) × (horizon) × "
+        "(segment retention likelihood). This is a directional planning estimate, not a fitted "
+        "probabilistic model — treat it as a starting point for budget conversations, not a guarantee."
+    )
+
+    lcol1, lcol2 = st.columns(2)
+    with lcol1:
+        horizon = st.slider("Projection horizon (months)", 3, 36, st.session_state.ltv_horizon_months, step=3)
+        st.session_state.ltv_horizon_months = horizon
+    with lcol2:
+        if not st.session_state.is_sample and st.session_state.clean_df is not None:
+            obs_days = (st.session_state.clean_df["InvoiceDate"].max() - st.session_state.clean_df["InvoiceDate"].min()).days
+            obs_months = max(obs_days / 30.0, 1.0)
+            st.metric("Observed history used for purchase rate", f"{obs_months:.1f} months")
+        else:
+            obs_months = st.slider("Assumed observation window (months)", 1, 24, 12)
+
+    with st.expander("Adjust segment retention-likelihood assumptions"):
+        st.caption("Rough probability that a customer in this segment keeps buying over the projection horizon.")
+        rcols = st.columns(len(SEGMENT_ORDER))
+        for rcol, seg in zip(rcols, SEGMENT_ORDER):
+            with rcol:
+                st.session_state.retention_assumptions[seg] = st.slider(
+                    f"{SEGMENT_ICONS.get(seg, '')} {seg}",
+                    0.0, 1.0,
+                    float(st.session_state.retention_assumptions.get(seg, SEGMENT_RETENTION_DEFAULTS[seg])),
+                    0.05, key=f"ret_{seg}",
+                )
+
+    ltv_df = rfm[["CustomerID", "Segment", "Recency", "Frequency", "Monetary"]].copy()
+    ltv_df["AOV"] = (ltv_df["Monetary"] / ltv_df["Frequency"]).replace([np.inf, -np.inf], np.nan).fillna(ltv_df["Monetary"])
+    ltv_df["Monthly_Purchase_Rate"] = ltv_df["Frequency"] / obs_months
+    ltv_df["Retention_Likelihood"] = ltv_df["Segment"].astype(str).map(st.session_state.retention_assumptions).fillna(0.3)
+    ltv_df["Projected_LTV"] = (
+        ltv_df["AOV"] * ltv_df["Monthly_Purchase_Rate"] * horizon * ltv_df["Retention_Likelihood"]
+    ).round(2)
+    ltv_df = ltv_df.rename(columns={"Monetary": "Historical_Value"})
+
+    l1, l2, l3 = st.columns(3)
+    kpi_card(l1, "💰", "Total Historical Value", f"{CUR}{ltv_df['Historical_Value'].sum():,.0f}")
+    kpi_card(l2, "🔮", f"Total Projected LTV ({horizon}mo)", f"{CUR}{ltv_df['Projected_LTV'].sum():,.0f}")
+    kpi_card(l3, "📊", "Avg Projected LTV / Customer", f"{CUR}{ltv_df['Projected_LTV'].mean():,.0f}")
+
+    seg_ltv = ltv_df.groupby("Segment", observed=False)["Projected_LTV"].mean().reindex(SEGMENT_ORDER).reset_index()
+    fig_ltv = px.bar(
+        seg_ltv, x="Segment", y="Projected_LTV", color="Segment", color_discrete_map=SEGMENT_COLORS,
+        text=seg_ltv["Projected_LTV"].map(lambda x: f"{CUR}{x:,.0f}"),
+        title=f"Avg Projected {horizon}-Month LTV by Segment",
+    )
+    fig_ltv.update_layout(
+        showlegend=False, template=PLOT_TEMPLATE, font_family=FONT_FAMILY,
+        plot_bgcolor="#F4F6FA", paper_bgcolor="#F4F6FA", yaxis_title=f"Projected LTV ({CUR})",
+    )
+    st.plotly_chart(fig_ltv, use_container_width=True)
+
+    with st.expander("Full customer-level LTV table"):
+        st.dataframe(
+            ltv_df.sort_values("Projected_LTV", ascending=False).style.format({
+                "AOV": f"{CUR}{{:,.2f}}", "Historical_Value": f"{CUR}{{:,.2f}}",
+                "Projected_LTV": f"{CUR}{{:,.2f}}", "Monthly_Purchase_Rate": "{:.2f}",
+            }),
+            use_container_width=True, hide_index=True,
+        )
+    ltv_csv = ltv_df.to_csv(index=False).encode("utf-8")
+    st.download_button("⬇️ Download full LTV table (CSV)", data=ltv_csv, file_name="customer_ltv_projection.csv", mime="text/csv")
+
+# ---- TAB: Customer Explorer -----------------------------------------------
+with tabs[7]:
     st.subheader("Customer Explorer")
 
     fcol1, fcol2, fcol3 = st.columns(3)
@@ -1069,12 +1313,14 @@ with tabs[6]:
     st.download_button("⬇️ Download filtered results (CSV)", data=csv_buf, file_name="rfm_filtered_customers.csv", mime="text/csv")
 
 # ---- TAB: Recommendations --------------------------------------------------
-with tabs[7]:
+with tabs[8]:
     st.subheader("Segment-wise Business Recommendations")
+    st.caption("Each segment includes a strategic recommendation plus a ready-to-export campaign list — CustomerID, RFM stats, and suggested subject line/offer — so this turns into a campaign, not just a chart.")
 
     for seg in SEGMENT_ORDER:
-        count = int((rfm["Segment"] == seg).sum())
-        revenue_share = round(rfm.loc[rfm["Segment"] == seg, "Monetary"].sum() / rfm["Monetary"].sum() * 100, 1) if rfm["Monetary"].sum() else 0
+        seg_mask = rfm["Segment"] == seg
+        count = int(seg_mask.sum())
+        revenue_share = round(rfm.loc[seg_mask, "Monetary"].sum() / rfm["Monetary"].sum() * 100, 1) if rfm["Monetary"].sum() else 0
         color = SEGMENT_COLORS[seg]
         icon = SEGMENT_ICONS.get(seg, "")
         st.markdown(
@@ -1083,9 +1329,26 @@ with tabs[7]:
             f"<span style='margin-left:auto; color:var(--ink-soft); font-size:0.85rem;'>{count:,} customers · {revenue_share:.1f}% of revenue</span></div>"
             f"<p class='rec-desc'>{SEGMENT_DESCRIPTIONS[seg]}</p>"
             f"<p class='rec-action'><b>Recommendation:</b> {RECOMMENDATIONS[seg]}</p>"
+            f"<p class='rec-action' style='background:transparent; border:1px dashed var(--rule); padding:8px 12px;'>"
+            f"<b>Suggested subject line:</b> \"{CAMPAIGN_SUBJECT[seg]}\"<br>"
+            f"<b>Suggested offer:</b> {CAMPAIGN_OFFER[seg]}</p>"
             "</div>",
             unsafe_allow_html=True,
         )
+
+        if count > 0:
+            campaign_df = rfm.loc[seg_mask, ["CustomerID", "Recency", "Frequency", "Monetary"]].copy()
+            campaign_df.insert(1, "Segment", seg)
+            campaign_df["Suggested_Subject"] = CAMPAIGN_SUBJECT[seg]
+            campaign_df["Suggested_Offer"] = CAMPAIGN_OFFER[seg]
+            campaign_csv = campaign_df.sort_values("Monetary", ascending=False).to_csv(index=False).encode("utf-8")
+            st.download_button(
+                f"⬇️ Download {seg} campaign list ({count:,} customers)",
+                data=campaign_csv,
+                file_name=f"campaign_{seg.lower().replace(' ', '_')}.csv",
+                mime="text/csv",
+                key=f"dl_{seg}",
+            )
 
     st.caption("Recommendations are strategic starting points based on segment behavior — pair them with your own campaign tooling.")
 
